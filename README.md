@@ -51,6 +51,38 @@ No Secure Erase: The tool does not attempt to securely erase the plaintext from 
 Must Trust the System: Because the tool runs on your system, if that machine is compromised (e.g., keylogger, rootkit, or malware), an attacker could capture the password or the memory-stored keys. This is not a specific flaw in the app, but a general caveat of software encryption in a compromised environment.
 
 
+# Overall Security Assessment
+The application uses well-regarded building blocks:
+
+Threefish-512 (secure block cipher)
+
+Argon2id (robust password hashing)
+
+HMAC-SHA512 (strong message authentication)
+
+Threat Model: It’s designed to protect data at rest when you’re storing or transmitting files, assuming an attacker does not know your password.
+Practical Attack Path: The easiest route for an attacker is typically to guess or steal your password, or to compromise the system where encryption is done. The cryptographic primitives themselves are very solid for typical usage.
+
+For everyday usage, this is quite strong if you choose a long, random password and the system environment is secure. If you’re extremely high profile (like a nation-state target), you’d want even more robust operational security, possibly specialized hardware, and best practices around secure passphrase generation and OS-level protections.
+In conclusion, this tool is “secure enough” for most personal or professional use-cases, so long as you use a strong password and keep your environment clean. It leverages standard, modern cryptography in a straightforward manner with no known vulnerabilities in its approach.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
