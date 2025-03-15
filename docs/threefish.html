@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Threefish-512 CLI Tool README</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 1.5em;
+      max-width: 800px;
+    }
+    code {
+      background-color: #f4f4f4;
+      padding: 0.25em;
+      border-radius: 4px;
+    }
+    pre {
+      background-color: #f4f4f4;
+      padding: 1em;
+      border-radius: 4px;
+      overflow: auto;
+    }
+    h1, h2, h3 {
+      margin-top: 1.2em;
+    }
+    h1 {
+      text-align: center;
+    }
+    hr {
+      margin: 2em 0;
+    }
+    .important {
+      color: #b00;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Threefish-512 CLI Tool</h1>
+
+<p>
+  This tool demonstrates how to perform:
+</p>
+<ul>
+  <li>Encryption and decryption using <strong>Threefish-512</strong> in CTR mode.</li>
+  <li>Integrity verification via <strong>HMAC-SHA512</strong>.</li>
+  <li>Secure <strong>password-based key derivation</strong> using <strong>Argon2id</strong>.</li>
+</ul>
+
+<p>
+  Below you'll find step-by-step instructions on how to use the tool, detailed explanations of how it works, and some notes about best practices.
+</p>
+
+<hr/>
+
+<h2>Building and Running</h2>
+
+<ol>
+  <li>
+    <strong>Install Rust</strong>, if you haven't already. Visit 
+    <a href="https://www.rust-lang.org/tools/install" target="_blank">Rust Installation</a> and follow instructions to install <code>rustup</code> and the latest stable Rust toolchain.
+  </li>
+  <li>
+    <strong>Clone or create a new directory</strong> for the project. Ensure you have a <code>Cargo.toml</code> with the required dependencies:
+    <pre><code>[package]
+name = "threefish_cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rpassword = "5"
+rand = "0.8"
+rand_core = "0.6"
+argon2 = "0.4"
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+</code></pre>
+  </li>
+  <li>
+    Place the <code>main.rs</code> (with the Threefish-512 CTR logic, Argon2 derivation, HMAC-SHA512, etc.) in <code>src/main.rs</code>.  
+    You can copy the final code (the one that appends salt/nonce to <code>data.txt</code>) from our conversation into <code>src/main.rs</code>.
+  </li>
+  <li>
+    <strong>Build and run</strong>:
+    <pre><code>cargo build --release
+./target/release/threefish_cli &lt;filename&gt;</code></pre>
+    Or simply:
+    <pre><code>cargo run -- &lt;filename&gt;</code></pre>
+  </li>
+</ol>
+
+<hr/>
+
+<h2>Usage</h2>
+
+<p>
+  The tool expects exactly <strong>one argument</strong>: the file name you want to encrypt or decrypt.
+</p>
+
+<ol>
+  <li>
+    <code>./threefish_cli <filename></code><br/>
+    You will be asked for a password <em>twice</em>. If the two passwords do not match, the program exits.
+  </li>
+  <li>
+    Next, the tool checks whether the file already has a 4-byte "magic header" of <code>TFSH</code>:
+    <ul>
+      <li>If <strong>yes</strong>, the file is assumed to be <em>encrypted</em>. The tool derives the key from your password (via Argon2id) and attempts to decrypt in-place. If the HMAC verifies, the file is rewritten in plaintext form.</li>
+      <li>If <strong>no</strong>, the file is assumed to be <em>plaintext</em>. The tool derives the key, encrypts the contents, writes the "TFSH" header, the salt (16 bytes), the nonce (16 bytes), the ciphertext, and the 64-byte HMAC tag back to the file.</li>
+    </ul>
+  </li>
+  <li>
+    During <strong>encryption</strong>, the program will also <em>append</em> the generated salt and nonce (in hex) to <code>data.txt</code> (or create <code>data.txt</code> if it doesn’t exist). This helps you confirm that the salt and nonce are random for each encryption run. No ciphertext or key material is logged.
+  </li>
+</ol>
+
+<hr/>
+
+<h2>Format of the Encrypted File</h2>
+
+When a file is encrypted, the output file is structured as follows:
+
+<pre><code>+-------------------------------------+----------------+----------------+---------------------------------------+-----------------------------------+
+| 4-byte magic header "TFSH" (ASCII)   | salt (16 bytes)| nonce (16 bytes)| ciphertext (N bytes)                  | HMAC-SHA512 tag (64 bytes)        |
++-------------------------------------+----------------+----------------+---------------------------------------+-----------------------------------+
+</code></pre>
+
+<ul>
+  <li><code>[0..4]</code>: The 4-byte magic, <strong>TFSH</strong>.</li>
+  <li><code>[4..20]</code>: 16-byte salt for Argon2 key derivation.</li>
+  <li><code>[20..36]</code>: 16-byte nonce for the Threefish-CTR mode.</li>
+  <li><code>[36..EOF - 64]</code>: The ciphertext (encrypted in 64-byte blocks).</li>
+  <li>The final 64 bytes: HMAC-SHA512 of (<strong>nonce</strong> || <strong>ciphertext</strong>) to ensure integrity.</li>
+</ul>
+
+<p>
+  On decryption, the tool verifies the HMAC before attempting to decrypt. If HMAC verification fails, it exits with an error.
+</p>
+
+<hr/>
+
+<h2>Key Derivation</h2>
+<p>
+  We derive a <strong>128-byte master key</strong> from the user's password and a random 16-byte salt using <strong>Argon2id</strong>.
+  <br/>
+  Argon2id parameters in the code are:
+</p>
+<ul>
+  <li>Memory cost: 65,536 KiB (~64 MiB)</li>
+  <li>Time cost: 3 iterations</li>
+  <li>Parallelism (lanes): 4</li>
+  <li>Output length: 128 bytes</li>
+</ul>
+<p>
+  After derivation, we split the 128 bytes into two parts:
+</p>
+<ul>
+  <li>64 bytes for Threefish-512 (eight <code>u64</code> words)</li>
+  <li>64 bytes for the HMAC key</li>
+</ul>
+
+<hr/>
+
+<h2>Threefish-512 CTR Mode</h2>
+<p>
+  The <strong>Threefish-512</strong> block cipher operates on 512-bit (64-byte) blocks:
+</p>
+<ul>
+  <li>Key size: 512 bits (8 × 64-bit words)</li>
+  <li>Tweak size: 128 bits (2 × 64-bit words)</li>
+  <li>Rounds: 72</li>
+</ul>
+<p>
+  We use it in a <strong>CTR-like mode</strong> by:
+</p>
+<ol>
+  <li>For each 64-byte block of plaintext:
+    <ul>
+      <li>Build a tweak from the 16-byte nonce + the 8-byte block counter.</li>
+      <li>Encrypt an <em>all-zero block</em> with Threefish.</li>
+      <li><em>XOR</em> the resulting 64-byte keystream into the plaintext block.</li>
+    </ul>
+  </li>
+</ol>
+
+<hr/>
+
+<h2>HMAC-SHA512</h2>
+<p>
+  After encrypting, we compute <strong>HMAC-SHA512</strong> over the concatenation of:
+</p>
+<pre>(nonce || ciphertext)</pre>
+<p>
+  using the 64-byte HMAC key. This produces a 64-byte tag appended at the end of the output file. During decryption, the tool verifies this HMAC tag first; if it fails, the program reports <em>HMAC mismatch</em> and exits without revealing any plaintext.
+</p>
+
+<hr/>
+
+<h2><strong>Security Considerations</strong></h2>
+
+<ul>
+  <li>
+    <strong>Password Quality</strong>: Ensure the password you choose is strong enough (long, random, etc.). The tool's security against brute force relies on Argon2id’s time and memory hardness plus your chosen password entropy.
+  </li>
+  <li>
+    <strong>Salt &amp; Nonce Randomness</strong>: Each run generates fresh <code>salt</code> and <code>nonce</code> with <code>OsRng</code> (cryptographically secure RNG). You can inspect them in <code>data.txt</code> to confirm uniqueness.
+  </li>
+  <li>
+    <strong>File Overwrite</strong>: The tool overwrites the file in place. If you want an atomic update or a backup copy, consider adjusting the code or making a copy before encrypting/decrypting.
+  </li>
+  <li>
+    <strong>Data Integrity</strong>: If the file is tampered with, the HMAC verification will fail, preventing a successful decryption. This ensures integrity but does not detect if an attacker completely replaced the file with something else that also has its own valid HMAC (i.e., an attacker who knows your password could re-encrypt a different plaintext).
+  </li>
+</ul>
+
+<hr/>
+
+<h2>Troubleshooting</h2>
+
+<ul>
+  <li><strong>Passwords do not match!</strong> – Means you typed two different passwords in the prompt. Just re-run the tool.</li>
+  <li><strong>File too small to be valid encrypted data.</strong> – The file doesn’t have enough bytes to contain the salt, nonce, and HMAC. Possibly corrupted or a wrong file format.</li>
+  <li><strong>HMAC mismatch</strong> – Means the contents of the file do not match the expected HMAC, so either the password is wrong or the file was tampered with.</li>
+  <li><strong>Argon2 hashing failed</strong> – Rare, indicates some problem with Argon2 usage or system memory constraints. Check system resources or reduce Argon2 memory usage if needed.</li>
+</ul>
+
+<hr/>
+
+<h3>Enjoy using your Threefish-512 CLI encryption tool!</h3>
+<p>
+  For any feedback or questions, you may tweak the code further or open an issue in your repository. 
+  <br/>
+  Thanks for trying this project!
+</p>
+</body>
+</html>
+
